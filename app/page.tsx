@@ -55,9 +55,10 @@ const tasks: Task[] = [
   {
     id: 4,
     title: "Zadanie 4",
-    desc: "Pripravujeme...",
+    desc: "RSA: faktorizacia, vypocet privatneho kluca a desifrovanie.",
+    href: "/zadanie4",
     Icon: ShieldIcon,
-    color: "linear-gradient(90deg, #64748b, #94a3b8)",
+    color: "linear-gradient(90deg, #ef4444, #f87171)",
   },
   {
     id: 5,
@@ -129,7 +130,7 @@ export default function Home() {
                 color: "#ffffff",
               }}
             >
-              Minimalisticky prehlad zadani
+              Prehľad zadani
             </Typography>
 
             <Typography

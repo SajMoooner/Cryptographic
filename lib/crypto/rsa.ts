@@ -35,6 +35,8 @@
 // BigInt RSA utils: Miller–Rabin, Pollard Rho, inv mod, pow mod, full solve
 // n = p*q (semiprime). Works well up to ~128–160 bit n in practice (depends).
 
+import { primeSync } from 'bigint-crypto-utils';
+
 export type Factorization = { p: bigint; q: bigint };
 export type RSASolve = {
     ok: boolean;
@@ -42,6 +44,7 @@ export type RSASolve = {
     n: bigint; e: bigint; y: bigint;
     p?: bigint; q?: bigint; phi?: bigint; d?: bigint; m?: bigint;
     timeMs: number;
+    method?: string;
 };
 
 const ZERO = 0n, ONE = 1n, TWO = 2n;
@@ -153,6 +156,49 @@ function trialDivision(n: bigint): bigint | null {
 }
 
 /**
+ * fermatFactorization(n, maxIterations):
+ * - Fermatova faktorizácia - funguje dobre keď sú p a q blízko seba
+ * - Hľadá a, b také že n = a^2 - b^2 = (a-b)(a+b)
+ */
+function fermatFactorization(n: bigint, maxIterations = 10_000_000): Factorization | null {
+    if (n % 2n === 0n) return { p: 2n, q: n / 2n };
+
+    let a = sqrt(n) + 1n;
+    let b2 = a * a - n;
+
+    for (let i = 0; i < maxIterations; i++) {
+        const b = sqrt(b2);
+        if (b * b === b2) {
+            const p = a - b;
+            const q = a + b;
+            if (p * q === n && p > 1n && q > 1n) {
+                return { p, q };
+            }
+        }
+        a += 1n;
+        b2 = a * a - n;
+    }
+
+    return null;
+}
+
+// Integer square root pomocou Newton's method
+function sqrt(n: bigint): bigint {
+    if (n < 0n) return 0n;
+    if (n < 2n) return n;
+
+    let x0 = n;
+    let x1 = (x0 + 1n) / 2n;
+
+    while (x1 < x0) {
+        x0 = x1;
+        x1 = (x0 + n / x0) / 2n;
+    }
+
+    return x0;
+}
+
+/**
  * factorSemiprime(n, timeLimitMs):
  * - Pokúsi sa rozložiť n = p*q:
  *   1) small trial division,
@@ -186,27 +232,94 @@ export function factorSemiprime(n: bigint, timeLimitMs = 4000): Factorization | 
     }
 }
 
+/**
+ * factorSemiprimeAdvanced(n, timeLimitMs):
+ * - Pre väčšie čísla používa kombináciu metód:
+ *   1) Trial division s väčším počtom prvočísel
+ *   2) Fermatova faktorizácia (ak sú p, q blízko)
+ *   3) Pollard Rho
+ */
+export function factorSemiprimeAdvanced(n: bigint, timeLimitMs = 30000): Factorization | null {
+    if (n <= 1n) return null;
+    const t0 = Date.now();
+
+    // 1) Extended trial division
+    const td = trialDivision(n);
+    if (td) return { p: td, q: n / td };
+
+    // 2) Skús Fermatovu faktorizáciu (funguje dobre ak sú p a q blízko)
+    if (Date.now() - t0 < timeLimitMs) {
+        const fermat = fermatFactorization(n, 1_000_000);
+        if (fermat) {
+            const { p, q } = fermat;
+            if (isProbablePrime(p) && isProbablePrime(q)) {
+                return { p, q };
+            }
+        }
+    }
+
+    // 3) Pollard Rho s dlhším limitom
+    for (;;) {
+        if (Date.now() - t0 > timeLimitMs) return null;
+        const d = pollardRho(n, 1_000_000);
+        if (d === -1n || d === 1n) continue;
+        const p = isProbablePrime(d) ? d : null;
+        const q = isProbablePrime(n / d) ? n / d : null;
+        if (p && q) return { p, q };
+    }
+}
+
 // ---------- Solve full RSA instance ----------
 
 /**
- * solveRSA(nStr, eStr, yStr, timeLimitMs):
+ * solveRSA(nStr, eStr, yStr, timeLimitMs, useAdvanced):
  * - Orchestrácia: faktorizácia n -> p,q; výpočet φ, d; dešifrovanie y^d mod n.
+ * - useAdvanced: ak true, použije pokročilé metódy pre väčšie čísla
  * - Vracia štruktúru s p, q, φ(n), d, m a meraným časom, alebo dôvod neúspechu.
  */
-export function solveRSA(nStr: string, eStr: string, yStr: string, timeLimitMs = 5000): RSASolve {
+export function solveRSA(
+    nStr: string,
+    eStr: string,
+    yStr: string,
+    timeLimitMs = 5000,
+    useAdvanced = false
+): RSASolve {
     const n = BigInt(nStr), e = BigInt(eStr), y = BigInt(yStr);
     const t0 = Date.now();
     try {
-        const fac = factorSemiprime(n, timeLimitMs);
-        if (!fac) return { ok: false, reason: "Faktorizácia prekročila časový limit.", n, e, y, timeMs: Date.now() - t0 };
+        // Pre malé čísla použij základný algoritmus, pre veľké pokročilý
+        const fac = useAdvanced
+            ? factorSemiprimeAdvanced(n, timeLimitMs)
+            : factorSemiprime(n, timeLimitMs);
+
+        if (!fac) return {
+            ok: false,
+            reason: "Faktorizácia prekročila časový limit.",
+            n, e, y,
+            timeMs: Date.now() - t0,
+            method: useAdvanced ? 'advanced' : 'basic'
+        };
+
         const { p, q } = fac;
         // ensure p<q
         const P = p < q ? p : q, Q = p < q ? q : p;
         const phi = (P - ONE) * (Q - ONE);
         const d = modInv(e, phi);
         const m = modPow(y, d, n);
-        return { ok: true, n, e, y, p: P, q: Q, phi, d, m, timeMs: Date.now() - t0 };
+        return {
+            ok: true,
+            n, e, y,
+            p: P, q: Q, phi, d, m,
+            timeMs: Date.now() - t0,
+            method: useAdvanced ? 'advanced' : 'basic'
+        };
     } catch (err: any) {
-        return { ok: false, reason: err?.message || "Neznáma chyba", n, e, y, timeMs: Date.now() - t0 };
+        return {
+            ok: false,
+            reason: err?.message || "Neznáma chyba",
+            n, e, y,
+            timeMs: Date.now() - t0,
+            method: useAdvanced ? 'advanced' : 'basic'
+        };
     }
 }

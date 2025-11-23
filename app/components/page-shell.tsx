@@ -23,9 +23,6 @@ type PageShellProps = {
   toolbar?: React.ReactNode;
 };
 
-const gradientBackground =
-  "radial-gradient(circle at 18% 22%, rgba(99, 102, 241, 0.16), transparent 52%), linear-gradient(140deg, #050b14 0%, #060a12 48%, #04060d 100%)";
-
 const backButtonSx = {
   borderColor: "rgba(148, 163, 184, 0.35)",
   color: "#ffffff",
@@ -49,14 +46,41 @@ export default function PageShell({
       component="main"
       sx={{
         minHeight: "100vh",
-        background: gradientBackground,
+        backgroundColor: "#01030a",
         color: "#ffffff",
         display: "flex",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      <Box
+        aria-hidden="true"
+        sx={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage:
+            "radial-gradient(circle at 15% 20%, rgba(59, 130, 246, 0.28), transparent 40%), radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.24), transparent 55%)",
+          opacity: 0.75,
+        }}
+      />
+      <Box
+        aria-hidden="true"
+        sx={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage:
+            "repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 28px)",
+          opacity: 0.25,
+        }}
+      />
       <Container
         maxWidth={maxWidth}
-        sx={{ py: { xs: 6, md: 8 }, flexGrow: 1 }}
+        sx={{
+          py: { xs: 6, md: 8 },
+          flexGrow: 1,
+          position: "relative",
+          zIndex: 1,
+        }}
       >
         <Stack spacing={{ xs: 4, md: 5 }}>
           <Stack spacing={{ xs: 3, md: 3.5 }}>
@@ -89,8 +113,8 @@ export default function PageShell({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 1,
-                  px: 2.2,
-                  py: 0.9,
+                  px: 2.4,
+                  py: 0.85,
                   borderRadius: 9999,
                   border: "1px solid rgba(148, 163, 184, 0.28)",
                   backgroundColor: "rgba(15, 23, 42, 0.45)",
@@ -105,10 +129,10 @@ export default function PageShell({
                     fontWeight: 600,
                     letterSpacing: 1.4,
                     textTransform: "uppercase",
-                    color: "#ffffff",
+                    color: "rgba(255, 255, 255, 0.9)",
                   }}
                 >
-                  Kryptografia & Bezpecnost
+                  Kryptografia &amp; Bezpečnosť
                 </Typography>
               </Box>
 
