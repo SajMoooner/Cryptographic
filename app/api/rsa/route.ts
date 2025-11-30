@@ -9,7 +9,7 @@ export async function POST(req: Request) {
         const n: string = body?.n ?? "";
         const e: string = body?.e ?? "65537";
         const y: string = body?.y ?? "";
-        const timeLimitMs = Number(body?.timeLimitMs ?? 10000);
+        const timeLimitMs = Number(body?.timeLimitMs ?? 300000);
         const useAdvanced = Boolean(body?.useAdvanced ?? false);
 
         if (!n.trim() || !y.trim()) {
@@ -18,9 +18,9 @@ export async function POST(req: Request) {
 
         // Automaticky urči, či použiť pokročilé metódy podľa veľkosti čísla
         const nLength = n.length;
-        const shouldUseAdvanced = useAdvanced || nLength > 25; // čísla s viac ako 25 ciframi
+        const shouldUseAdvanced = useAdvanced || nLength >= 25; // veľké čísla -> knižničný režim
 
-        const result = solveRSA(n, e, y, timeLimitMs, shouldUseAdvanced);
+        const result = await solveRSA(n, e, y, timeLimitMs, shouldUseAdvanced);
 
         if (!result.ok) {
             return NextResponse.json({

@@ -123,7 +123,7 @@ export default function Zadanie4Page() {
       const res = await fetch("/api/rsa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ n, e, y, timeLimitMs: 30000 }),
+        body: JSON.stringify({ n, e, y, timeLimitMs: 300000 }),
         signal: abortController.signal,
       });
 
@@ -245,7 +245,7 @@ export default function Zadanie4Page() {
   return (
     <PageShell
       title="Zadanie 4 - RSA Dešifrovanie"
-      subtitle="Faktorizácia malých RSA modulov a dešifrovanie správ pomocou Trial Division a Pollard Rho algoritmu."
+      subtitle="Rýchle dešifrovanie: menšie moduly manuálnou trial division + Pollard Rho, veľké cez bigint-crypto-utils a vylepšený Pollard Rho."
       maxWidth="xl"
     >
       <Stack spacing={{ xs: 3.5, md: 4 }}>
@@ -456,7 +456,7 @@ export default function Zadanie4Page() {
                   <Box>
                     <Typography variant="caption" sx={{ color: "rgba(255, 255, 255, 0.6)" }}>
                       Čas výpočtu: {customResult.timeMs}ms
-                      {customResult.method && ` • Metóda: ${customResult.method === 'advanced' ? 'Pokročilá (Fermat + Pollard Rho)' : 'Základná (Trial Division + Pollard Rho)'}`}
+                      {customResult.method && ` • Metóda: ${customResult.method === 'library' ? 'Knižničná (bigint-crypto-utils + Pollard Rho/Brent)' : 'Rýchla manuálna (trial division + Pollard Rho)'}`}
                     </Typography>
                   </Box>
 
@@ -533,9 +533,9 @@ export default function Zadanie4Page() {
                         <TableCell sx={{ color: "#fff" }}>
                           <Stack direction="row" spacing={1} alignItems="center">
                             <span>{idx + 1}</span>
-                            {task.n.length > 25 && (
+                            {task.n.length >= 25 && (
                               <Chip
-                                label="Advanced"
+                                label="Library"
                                 size="small"
                                 sx={{
                                   fontSize: "0.7rem",
@@ -747,7 +747,7 @@ export default function Zadanie4Page() {
                   <Box>
                     <Typography variant="caption" sx={{ color: "rgba(255, 255, 255, 0.6)" }}>
                       Čas výpočtu: {result.timeMs}ms
-                      {result.method && ` • Metóda: ${result.method === 'advanced' ? 'Pokročilá (Fermat + Pollard Rho)' : 'Základná (Trial Division + Pollard Rho)'}`}
+                      {result.method && ` • Metóda: ${result.method === 'library' ? 'Knižničná (bigint-crypto-utils + Pollard Rho/Brent)' : 'Rýchla manuálna (trial division + Pollard Rho)'}`}
                     </Typography>
                   </Box>
 
