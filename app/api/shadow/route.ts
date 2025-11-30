@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import { crackShadow, parseShadowFile } from "@/lib/crypto/shadow";
+import { parseShadowFile } from "@/lib/crypto/shadow";
+import { crackShadowParallel } from "@/lib/crypto/shadow-parallel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function toList(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((v) => String(v));
@@ -42,16 +44,20 @@ export async function POST(req: Request) {
       ? Number(body?.timeLimitMs)
       : 60_000;
 
-    const result = crackShadow(shadowText, {
+    const result = await crackShadowParallel(shadowText, {
+      enableNames: body?.enableNames !== false,
       includeDefaultNames: body?.includeDefaultNames !== false,
       customNames,
       extraWords,
       deriveFromLogins: body?.deriveFromLogins !== false,
-      enableLowerBruteforce: body?.enableLowerBruteforce !== false,
-      enableMixedBruteforce: body?.enableMixedBruteforce !== false,
+      enableLower6: body?.enableLower6 !== false,
+      enableLower7: body?.enableLower7 !== false,
+      enableMixed4: body?.enableMixed4 !== false,
+      enableMixed5: body?.enableMixed5 !== false,
       maxLowerCandidates: maxLower,
       maxMixedCandidates: maxMixed,
       timeLimitMs,
+      numWorkers: body?.numWorkers,
     });
 
     return NextResponse.json({

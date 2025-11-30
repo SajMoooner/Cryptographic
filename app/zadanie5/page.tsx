@@ -40,12 +40,13 @@ type ApiStats = {
   triedNames: number;
   triedCustom: number;
   triedLogin: number;
-  triedLower: number;
-  triedMixed: number;
+  triedLower6: number;
+  triedLower7: number;
+  triedMixed4: number;
+  triedMixed5: number;
   durationMs: number;
   timedOut: boolean;
-  limitHitLower: boolean;
-  limitHitMixed: boolean;
+  workersUsed: number;
 };
 
 type ApiResult = {
@@ -144,13 +145,24 @@ export default function Zadanie5Page() {
   const [shadow, setShadow] = React.useState<string>(SAMPLE_SHADOW);
   const [names, setNames] = React.useState<string>(DEFAULT_NAMES);
   const [extraWords, setExtraWords] = React.useState<string>(DEFAULT_EXTRA);
+
+  // Kategória 1: Slovenské mená
+  const [enableNames, setEnableNames] = React.useState<boolean>(true);
   const [useDefaultNames, setUseDefaultNames] = React.useState<boolean>(true);
   const [deriveFromLogin, setDeriveFromLogin] = React.useState<boolean>(true);
-  const [enableLower, setEnableLower] = React.useState<boolean>(true);
-  const [enableMixed, setEnableMixed] = React.useState<boolean>(true);
-  const [maxLower, setMaxLower] = React.useState<number>(300000);
-  const [maxMixed, setMaxMixed] = React.useState<number>(200000);
-  const [timeLimit, setTimeLimit] = React.useState<number>(30000);
+
+  // Kategória 2: 6-7 malých písmen
+  const [enableLower6, setEnableLower6] = React.useState<boolean>(true);
+  const [enableLower7, setEnableLower7] = React.useState<boolean>(true);
+  const [maxLower, setMaxLower] = React.useState<number>(500000);
+
+  // Kategória 3: 4-5 mixed znakov
+  const [enableMixed4, setEnableMixed4] = React.useState<boolean>(true);
+  const [enableMixed5, setEnableMixed5] = React.useState<boolean>(true);
+  const [maxMixed, setMaxMixed] = React.useState<number>(500000);
+
+  const [timeLimit, setTimeLimit] = React.useState<number>(60000);
+  const [numWorkers, setNumWorkers] = React.useState<number>(4);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<ApiResult | null>(null);
@@ -186,13 +198,17 @@ export default function Zadanie5Page() {
           shadow,
           customNames: parseList(names),
           extraWords: parseList(extraWords),
+          enableNames,
           includeDefaultNames: useDefaultNames,
           deriveFromLogins: deriveFromLogin,
-          enableLowerBruteforce: enableLower,
-          enableMixedBruteforce: enableMixed,
+          enableLower6,
+          enableLower7,
+          enableMixed4,
+          enableMixed5,
           maxLowerCandidates: maxLower,
           maxMixedCandidates: maxMixed,
           timeLimitMs: timeLimit,
+          numWorkers,
         }),
       });
 
@@ -210,9 +226,34 @@ export default function Zadanie5Page() {
     { label: `Skúsených hashov: ${result.stats.hashed.toLocaleString("sk-SK")}`, color: "primary" as const },
     { label: `Nájdených: ${result.cracked.length}/${result.total}`, color: "success" as const },
     { label: `Čas: ${(result.stats.durationMs / 1000).toFixed(2)} s`, color: "secondary" as const },
+    { label: `Workerov: ${result.stats.workersUsed}`, color: "info" as const },
   ] : [];
 
-  const limiterHint = result && (result.stats.limitHitLower || result.stats.limitHitMixed || result.stats.timedOut);
+  const limiterHint = result && result.stats.timedOut;
+
+  const categoryStatus = result ? [
+    {
+      title: "Kat. 1 (mená)",
+      detail:
+        result.stats.triedNames + result.stats.triedCustom + result.stats.triedLogin > 0
+          ? `Mena: ${result.stats.triedNames.toLocaleString("sk-SK")}, extra: ${result.stats.triedCustom.toLocaleString("sk-SK")}, login: ${result.stats.triedLogin.toLocaleString("sk-SK")}`
+          : "Vypnuté alebo nebolo spustené",
+    },
+    {
+      title: "Kat. 2 (a-z 6/7)",
+      detail:
+        result.stats.triedLower6 + result.stats.triedLower7 > 0
+          ? `6: ${result.stats.triedLower6.toLocaleString("sk-SK")} | 7: ${result.stats.triedLower7.toLocaleString("sk-SK")}`
+          : "Vypnuté alebo nebolo spustené",
+    },
+    {
+      title: "Kat. 3 (a-zA-Z0-9 4/5)",
+      detail:
+        result.stats.triedMixed4 + result.stats.triedMixed5 > 0
+          ? `4: ${result.stats.triedMixed4.toLocaleString("sk-SK")} | 5: ${result.stats.triedMixed5.toLocaleString("sk-SK")}`
+          : "Vypnuté alebo nebolo spustené",
+    },
+  ] : [];
 
   return (
     <PageShell
@@ -268,6 +309,30 @@ export default function Zadanie5Page() {
           </Button>
         </Stack>
 
+        <Alert
+          severity="info"
+          sx={{
+            backgroundColor: "rgba(59, 130, 246, 0.08)",
+            color: "#e2e8f0",
+            borderColor: "rgba(59, 130, 246, 0.35)",
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#ffffff", mb: 0.5 }}>
+            Stratégia podľa kategórií (nemiešam pravidlá):
+          </Typography>
+          <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)" }}>
+            Kat. 1: slovník slovenských mien + zdrobnenín s max. 1 veľkým písmenom, doplnené o login a vlastný
+            zoznam.
+          </Typography>
+          <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)" }}>
+            Kat. 2: iteratívny brute-force 6/7 písmen (a-z) rozdelený cez worker pool (npm <code>workerpool</code>) podľa
+            počtu workerov.
+          </Typography>
+          <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)" }}>
+            Kat. 3: bruteforce 4/5 znakov (a-zA-Z0-9) – vhodné pre kratšie "w7H5" heslá, limit nastav podľa času.
+          </Typography>
+        </Alert>
+
         <Paper variant="outlined" sx={cardSx}>
           <Stack spacing={3}>
             <TextField
@@ -301,10 +366,30 @@ export default function Zadanie5Page() {
               />
             </Stack>
 
+            {/* KATEGÓRIA 1: Slovenské mená */}
+            <Divider sx={{ borderColor: "rgba(148, 163, 184, 0.24)" }}>
+              <Typography variant="overline" sx={{ color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>
+                Kategória 1: Slovenské mená
+              </Typography>
+            </Divider>
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={enableNames}
+                  onChange={(_, v) => setEnableNames(v)}
+                  color="primary"
+                />
+              }
+              label="Povoliť lámanie slovenských mien a zdrobnenín"
+              sx={{ color: enableNames ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.5)" }}
+            />
+
             <Stack
               direction={{ xs: "column", md: "row" }}
               spacing={2}
               alignItems={{ xs: "flex-start", md: "center" }}
+              sx={{ pl: 4, opacity: enableNames ? 1 : 0.4 }}
             >
               <FormControlLabel
                 control={
@@ -312,9 +397,10 @@ export default function Zadanie5Page() {
                     checked={useDefaultNames}
                     onChange={(_, v) => setUseDefaultNames(v)}
                     color="primary"
+                    disabled={!enableNames}
                   />
                 }
-                label="Pridať vstavaný kalendár mien (s jedným veľkým písmenom kdekoľvek)"
+                label="Pridať vstavaný kalendár mien (s max. 1 veľkým písmenom)"
               />
               <FormControlLabel
                 control={
@@ -322,80 +408,142 @@ export default function Zadanie5Page() {
                     checked={deriveFromLogin}
                     onChange={(_, v) => setDeriveFromLogin(v)}
                     color="primary"
+                    disabled={!enableNames}
                   />
                 }
                 label="Použiť login a login bez číslic ako kandidát"
               />
             </Stack>
 
+            {/* KATEGÓRIA 2: 6-7 malých písmen */}
+            <Divider sx={{ borderColor: "rgba(148, 163, 184, 0.24)" }}>
+              <Typography variant="overline" sx={{ color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>
+                Kategória 2: 6-7 malých písmen (a-z)
+              </Typography>
+            </Divider>
+
+            <Stack spacing={2}>
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                spacing={2}
+                alignItems={{ xs: "flex-start", md: "center" }}
+              >
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableLower6}
+                      onChange={(_, v) => setEnableLower6(v)}
+                      color="primary"
+                    />
+                  }
+                  label="Brute-force 6 písmen (a-z)"
+                  sx={{ minWidth: 220 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableLower7}
+                      onChange={(_, v) => setEnableLower7(v)}
+                      color="primary"
+                    />
+                  }
+                  label="Brute-force 7 písmen (a-z)"
+                  sx={{ minWidth: 220 }}
+                />
+              </Stack>
+              <Stack direction="row" spacing={2} alignItems="center" sx={{ pl: { xs: 0, md: 4 } }}>
+                <TextField
+                  type="number"
+                  label="Max. kandidátov (na dĺžku)"
+                  value={maxLower}
+                  onChange={(e) => setMaxLower(Number(e.target.value))}
+                  sx={{ width: 240, ...textFieldSx }}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">≤</InputAdornment>,
+                  }}
+                  disabled={!enableLower6 && !enableLower7}
+                />
+                <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.6)" }}>
+                  26^6 ≈ 309M, 26^7 ≈ 8B kombinácií
+                </Typography>
+              </Stack>
+            </Stack>
+
+            {/* KATEGÓRIA 3: 4-5 mixed znakov */}
+            <Divider sx={{ borderColor: "rgba(148, 163, 184, 0.24)" }}>
+              <Typography variant="overline" sx={{ color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>
+                Kategória 3: 4-5 znakov (a-zA-Z0-9)
+              </Typography>
+            </Divider>
+
+            <Stack spacing={2}>
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                spacing={2}
+                alignItems={{ xs: "flex-start", md: "center" }}
+              >
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableMixed4}
+                      onChange={(_, v) => setEnableMixed4(v)}
+                      color="primary"
+                    />
+                  }
+                  label="Brute-force 4 znaky (a-zA-Z0-9)"
+                  sx={{ minWidth: 240 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableMixed5}
+                      onChange={(_, v) => setEnableMixed5(v)}
+                      color="primary"
+                    />
+                  }
+                  label="Brute-force 5 znakov (a-zA-Z0-9)"
+                  sx={{ minWidth: 240 }}
+                />
+              </Stack>
+              <Stack direction="row" spacing={2} alignItems="center" sx={{ pl: { xs: 0, md: 4 } }}>
+                <TextField
+                  type="number"
+                  label="Max. kandidátov (na dĺžku)"
+                  value={maxMixed}
+                  onChange={(e) => setMaxMixed(Number(e.target.value))}
+                  sx={{ width: 240, ...textFieldSx }}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">≤</InputAdornment>,
+                  }}
+                  disabled={!enableMixed4 && !enableMixed5}
+                />
+                <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.6)" }}>
+                  62^4 ≈ 14.7M, 62^5 ≈ 916M kombinácií
+                </Typography>
+              </Stack>
+            </Stack>
+
             <Divider sx={{ borderColor: "rgba(148, 163, 184, 0.24)" }} />
 
-            <Stack
-              direction={{ xs: "column", md: "row" }}
-              spacing={2}
-              alignItems={{ xs: "flex-start", md: "center" }}
-            >
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={enableLower}
-                    onChange={(_, v) => setEnableLower(v)}
-                    color="primary"
-                  />
-                }
-                label="Brute-force 6-7 písmen (a-z)"
-              />
-              <TextField
-                type="number"
-                label="Max. kandidátov"
-                value={maxLower}
-                onChange={(e) => setMaxLower(Number(e.target.value))}
-                sx={{ width: 180, ...textFieldSx }}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">≤</InputAdornment>,
-                }}
-                disabled={!enableLower}
-              />
-            </Stack>
-
-            <Stack
-              direction={{ xs: "column", md: "row" }}
-              spacing={2}
-              alignItems={{ xs: "flex-start", md: "center" }}
-            >
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={enableMixed}
-                    onChange={(_, v) => setEnableMixed(v)}
-                    color="primary"
-                  />
-                }
-                label="Brute-force 4-5 znakov (a-zA-Z0-9)"
-              />
-              <TextField
-                type="number"
-                label="Max. kandidátov"
-                value={maxMixed}
-                onChange={(e) => setMaxMixed(Number(e.target.value))}
-                sx={{ width: 180, ...textFieldSx }}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">≤</InputAdornment>,
-                }}
-                disabled={!enableMixed}
-              />
-            </Stack>
-
+            {/* Všeobecné nastavenia */}
             <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center">
               <TextField
                 type="number"
-                label="Celkový limit času (ms)"
+                label="Časový limit (ms)"
                 value={timeLimit}
                 onChange={(e) => setTimeLimit(Number(e.target.value))}
-                sx={{ width: 200, ...textFieldSx }}
+                sx={{ width: 180, ...textFieldSx }}
+              />
+              <TextField
+                type="number"
+                label="Počet workerov"
+                value={numWorkers}
+                onChange={(e) => setNumWorkers(Number(e.target.value))}
+                sx={{ width: 180, ...textFieldSx }}
+                inputProps={{ min: 1, max: 16 }}
               />
               <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.74)" }}>
-                Výpočet prebieha v jednom vlákne Node.js; vysoké limity môžu zamrznúť UI.
+                Paralelný výpočet pomocou Worker threads zrýchli brute-force.
               </Typography>
             </Stack>
           </Stack>
@@ -417,19 +565,47 @@ export default function Zadanie5Page() {
                 {result.stats.timedOut && (
                   <Chip label="Stop: časový limit" color="warning" sx={{ color: "#0f172a" }} />
                 )}
-                {result.stats.limitHitLower && (
-                  <Chip label="Stop: limit a-z" color="warning" sx={{ color: "#0f172a" }} />
-                )}
-                {result.stats.limitHitMixed && (
-                  <Chip label="Stop: limit a-zA-Z0-9" color="warning" sx={{ color: "#0f172a" }} />
-                )}
               </Stack>
 
-              <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.8)" }}>
-                Slovník: {result.stats.triedNames + result.stats.triedCustom + result.stats.triedLogin} kandidátov,&nbsp;
-                a-z (6/7): {result.stats.triedLower.toLocaleString("sk-SK")},&nbsp;
-                alfanum (4/5): {result.stats.triedMixed.toLocaleString("sk-SK")}.
-              </Typography>
+              <Stack spacing={1}>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.8)" }}>
+                  <strong>Kat. 1 (Mená):</strong> {result.stats.triedNames.toLocaleString("sk-SK")} mien, {result.stats.triedCustom.toLocaleString("sk-SK")} custom, {result.stats.triedLogin.toLocaleString("sk-SK")} loginov
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.8)" }}>
+                  <strong>Kat. 2 (a-z):</strong> 6 písmen: {result.stats.triedLower6.toLocaleString("sk-SK")}, 7 písmen: {result.stats.triedLower7.toLocaleString("sk-SK")}
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.8)" }}>
+                  <strong>Kat. 3 (a-zA-Z0-9):</strong> 4 znaky: {result.stats.triedMixed4.toLocaleString("sk-SK")}, 5 znakov: {result.stats.triedMixed5.toLocaleString("sk-SK")}
+                </Typography>
+              </Stack>
+
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                spacing={1}
+                sx={{ flexWrap: "wrap", gap: 1 }}
+              >
+                {categoryStatus.map((item) => (
+                  <Paper
+                    key={item.title}
+                    variant="outlined"
+                    sx={{
+                      ...baseCardSx,
+                      borderColor: "rgba(148, 163, 184, 0.28)",
+                      px: 2,
+                      py: 1.2,
+                      minWidth: { xs: "100%", md: 280 },
+                    }}
+                  >
+                    <Typography variant="subtitle2" sx={{ color: "#e2e8f0", fontWeight: 700 }}>
+                      {item.title}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.82)" }}>
+                      {item.detail}
+                      {result.stats.timedOut && " (stop: časový limit)"}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Stack>
 
               {limiterHint && (
                 <Alert severity="info" sx={{ backgroundColor: "rgba(59, 130, 246, 0.08)", color: "#fff" }}>

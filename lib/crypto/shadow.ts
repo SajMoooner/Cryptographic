@@ -61,7 +61,7 @@ export function hashMd5Base64(password: string, salt: string): string {
   return createHash("md5").update(password, "utf8").update(salt, "utf8").digest("base64");
 }
 
-function variantsWithOneUpper(word: string): string[] {
+export function variantsWithOneUpper(word: string): string[] {
   const lower = word.toLowerCase();
   const out = new Set<string>([lower]);
   for (let i = 0; i < lower.length; i++) {
