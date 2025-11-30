@@ -7,16 +7,17 @@
 //
 // 1) Rozložím n = p * q (semiprvočíslo).
 //    - BASIC: rýchle delenie malými číslami + obmedzená trial division + Pollard Rho.
-//    - LIBRARY: rozšírená trial division + Fermat + Pollard Rho s randBetween/isProbablyPrime
-//      z knižnice bigint-crypto-utils (npm).
+//    - LIBRARY: rýchla trial division + Quadratic Sieve z knižnice `quadraticsievefactorization`.
 //
 // 2) φ(n) = (p-1)(q-1)
 // 3) d = e^{-1} mod φ(n)
 // 4) m = y^d mod n
 //
 // Návrat: ok/false + p, q, φ, d, m, čas a použitá metóda ("basic" | "library").
+//
 
 import * as bcu from "bigint-crypto-utils";
+import factorize from "quadraticsievefactorization";
 
 export type Factorization = { p: bigint; q: bigint };
 export type RSASolve = {
@@ -108,7 +109,11 @@ export function isProbablePrime(n: bigint): boolean {
 
 /** trialDivision(n): Rýchly test na malé delitele (malá sada prvočísel). */
 function trialDivision(n: bigint): bigint | null {
-    for (const p of [2n,3n,5n,7n,11n,13n,17n,19n,23n,29n,31n,37n,41n,43n,47n,53n,59n,61n,67n,71n,73n,79n,83n,89n,97n]) {
+    for (const p of [
+        2n,3n,5n,7n,11n,13n,17n,19n,23n,29n,
+        31n,37n,41n,43n,47n,53n,59n,61n,67n,71n,
+        73n,79n,83n,89n,97n
+    ]) {
         if (n % p === 0n) return p;
     }
     return null;
@@ -130,7 +135,7 @@ function trialDivisionBounded(n: bigint, limit: bigint, deadline: number): bigin
     return null;
 }
 
-// ---------- Fermat + Pollard Rho ----------
+// ---------- Pollard Rho (basic režim) ----------
 
 /** fPoly(x,c): Kvadratické zobrazenie (x^2 + c) mod n pre Pollard Rho. */
 function fPoly(x: bigint, c: bigint, mod: bigint): bigint {
@@ -168,34 +173,6 @@ function pollardRhoRandomized(n: bigint, deadline: number, maxIters = 1_000_000)
     return d;
 }
 
-/**
- * fermatFactorization(n, maxIterations, deadline):
- * - Fermatova faktorizácia - funguje dobre keď sú p a q blízko seba
- * - Hľadá a, b také že n = a^2 - b^2 = (a-b)(a+b)
- */
-function fermatFactorization(n: bigint, maxIterations = 10_000_000, deadline?: number): Factorization | null {
-    if (n % TWO === 0n) return { p: TWO, q: n / TWO };
-
-    let a = sqrt(n) + ONE;
-    let b2 = a * a - n;
-
-    for (let i = 0; i < maxIterations; i++) {
-        if (deadline && Date.now() > deadline) return null;
-        const b = sqrt(b2);
-        if (b * b === b2) {
-            const p = a - b;
-            const q = a + b;
-            if (p * q === n && p > ONE && q > ONE) {
-                return { p, q };
-            }
-        }
-        a += ONE;
-        b2 = a * a - n;
-    }
-
-    return null;
-}
-
 // Integer square root pomocou Newton's method
 function sqrt(n: bigint): bigint {
     if (n < ZERO) return ZERO;
@@ -212,7 +189,7 @@ function sqrt(n: bigint): bigint {
     return x0;
 }
 
-// ---------- Prime check via library (async) ----------
+// ---------- Prime check via library (momentálne sa veľmi nepoužíva, ale nechávam) ----------
 
 async function isProbablePrimeFast(n: bigint): Promise<boolean> {
     try {
@@ -229,12 +206,15 @@ export async function factorSemiprimeBasic(n: bigint, timeLimitMs = 4000): Promi
     if (n <= ONE) return null;
     const deadline = Date.now() + timeLimitMs;
 
+    // rýchle delenie malými prvočíslami
     const td = trialDivision(n);
     if (td) return { p: td, q: n / td };
 
+    // delenie do limitu
     const bounded = trialDivisionBounded(n, BASIC_TRIAL_LIMIT, deadline);
     if (bounded) return { p: bounded, q: n / bounded };
 
+    // heuristický algoritmus na hľadanie netriviálnych deliteľov
     while (Date.now() <= deadline) {
         const d = pollardRhoRandomized(n, deadline, 400_000);
         if (!d || d === n) continue;
@@ -247,37 +227,54 @@ export async function factorSemiprimeBasic(n: bigint, timeLimitMs = 4000): Promi
     return null;
 }
 
-/** LIBRARY: väčšie n, viac trial division + Fermat + Pollard Rho s bigint-crypto-utils. */
-export async function factorSemiprimeLibrary(n: bigint, timeLimitMs = 30000): Promise<Factorization | null> {
+/**
+ * LIBRARY: väčšie n – rýchla trial division + Quadratic Sieve
+ * z knižnice `quadraticsievefactorization`.
+ */
+export async function factorSemiprimeLibrary(
+    n: bigint,
+    timeLimitMs = 30000
+): Promise<Factorization | null> {
     if (n <= ONE) return null;
     const deadline = Date.now() + timeLimitMs;
 
+    // 1) Najprv skúsiť malé a stredné delitele (lacné)
     const td = trialDivision(n) ?? trialDivisionBounded(n, LIBRARY_TRIAL_LIMIT, deadline);
-    if (td) return { p: td, q: n / td };
-
-    const fermat = fermatFactorization(n, 2_000_000, deadline);
-    if (fermat && await isProbablePrimeFast(fermat.p) && await isProbablePrimeFast(fermat.q)) {
-        return fermat;
+    if (td) {
+        const p = td;
+        const q = n / td;
+        return { p, q };
     }
 
-    while (Date.now() <= deadline) {
-        const d = pollardRhoRandomized(n, deadline, 900_000);
-        if (!d || d === n) continue;
-        const p = await isProbablePrimeFast(d) ? d : null;
-        const qCandidate = n / d;
-        const q = p && await isProbablePrimeFast(qCandidate) ? qCandidate : null;
-        if (p && q) return { p, q };
+    // 2) Advanced: Quadratic Sieve z knižnice `quadraticsievefactorization`
+    //
+    // factorize(n: bigint) -> netriviálny deliteľ d (nie nutne prvočíslo).
+    // Pri RSA semiprvočísle n = p*q nám stačí jeden faktor d, druhý je n/d.
+    let d: bigint | null = null;
+
+    try {
+        d = factorize(n);
+    } catch {
+        return null;
     }
 
-    return null;
+    if (!d || d === ONE || d === n) {
+        return null;
+    }
+
+    const other = n / d;
+    const p = d < other ? d : other;
+    const q = d < other ? other : d;
+
+    return { p, q };
 }
 
 // ---------- Solve full RSA instance ----------
 
 /**
  * solveRSA(nStr, eStr, yStr, timeLimitMs, useAdvanced):
- * - useAdvanced => library režim (bigint-crypto-utils)
- * - otherwise základný rýchly režim
+ * - useAdvanced => library režim (Quadratic Sieve + trial division)
+ * - otherwise základný rýchly režim (trial division + Pollard Rho)
  */
 export async function solveRSA(
     nStr: string,
@@ -295,23 +292,23 @@ export async function solveRSA(
 
         if (!fac) return {
             ok: false,
-            reason: "Faktorizácia prekročila časový limit.",
+            reason: "Faktorizácia prekročila časový limit alebo zlyhala.",
             n, e, y,
             timeMs: Date.now() - t0,
-            method: useAdvanced ? 'library' : 'basic'
+            method: useAdvanced ? "library" : "basic"
         };
 
         const { p, q } = fac;
         const P = p < q ? p : q, Q = p < q ? q : p;
         const phi = (P - ONE) * (Q - ONE);
-        const d = modInv(e, phi);
-        const m = modPow(y, d, n);
+        const d = modInv(e, phi);  // výpočet d
+        const m = modPow(y, d, n);  // výpočet m
         return {
             ok: true,
             n, e, y,
             p: P, q: Q, phi, d, m,
             timeMs: Date.now() - t0,
-            method: useAdvanced ? 'library' : 'basic'
+            method: useAdvanced ? "library" : "basic"
         };
     } catch (err: any) {
         return {
@@ -319,7 +316,7 @@ export async function solveRSA(
             reason: err?.message || "Neznáma chyba",
             n, e, y,
             timeMs: Date.now() - t0,
-            method: useAdvanced ? 'library' : 'basic'
+            method: useAdvanced ? "library" : "basic"
         };
     }
 }

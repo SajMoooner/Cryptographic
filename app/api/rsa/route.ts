@@ -9,7 +9,7 @@ export async function POST(req: Request) {
         const n: string = body?.n ?? "";
         const e: string = body?.e ?? "65537";
         const y: string = body?.y ?? "";
-        const timeLimitMs = Number(body?.timeLimitMs ?? 300000);
+        const timeLimitMs = Number(body?.timeLimitMs ?? 3000000);
         const useAdvanced = Boolean(body?.useAdvanced ?? false);
 
         if (!n.trim() || !y.trim()) {

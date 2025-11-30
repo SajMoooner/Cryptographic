@@ -63,7 +63,8 @@ const tasks: Task[] = [
   {
     id: 5,
     title: "Zadanie 5",
-    desc: "Pripravujeme...",
+    desc: "Crackovanie shadow súborov (MD5+Base64 so soľou).",
+    href: "/zadanie5",
     Icon: BuildCircleIcon,
     color: "linear-gradient(90deg, #a16207, #f59e0b)",
   },
